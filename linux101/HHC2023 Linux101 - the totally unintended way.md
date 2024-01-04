@@ -13,6 +13,7 @@ Checking out the [GitHub page](https://github.com/tmux-python/tmuxp) for `tmuxp`
 
 Within a `tmux` session you can issue commands with key shortcuts, using something called the `prefix key`. In the default configuration, the `prefix key` is `Ctrl-b`, i.e. the `control` button pressed at the same time as `b`. Followed by other keys, commands are issued. For example `Ctrl-b %` corresponds to splitting a `window` vertically. Let's try it!
 ![](images/ss_reconnect.png)
+
 Disconnected! Quickly after issuing the command, we got thrown out from the challenge. But, at least the command worked and we understand that we are indeed running `tmux` with the default `prefix key` configured.
 ## Getting a basic understanding
 Back at it! This time, let's create a new `tmux` `window` without first interacting with the terminal. A new `window` is created with `Ctrl-b c`.
@@ -22,15 +23,18 @@ This time it worked, and we did not get disconnected! Plus, we are not the user 
 
 Two large (>5Mb) files, the previously missing `mysession.yaml` and a `questions_answers.json` file. Let's investigate `mysession.yaml` by launching it in vim:
 ![](images/ss_vim_mysession.png)
+
 So `tmuxp` configures a `tmux` `session` with a single `window`, divided into two horizontally split `panes`, each running the `top_pane` and the `bottom_pane` binaries, respectively. This shows us the challenge's structure and straightly points us onto what we should focus next.
 
 The `questions_answers.json` seems to contain all the information for the challenge. It includes the intro/greeting shown in the panes when starting the challenge, as well as an array with each step in the challenge. It seems to contain different types of questions. The ones of the type `str` contains an array of strings in the `str` node that are expected in order to complete the question.
 ![](images/ss_vim_questions_answers.png)
+
 For example, the first question:
 >Perform a directory listing of your home directory to find a troll \[...\]
 
 Running `ls` in the bottom pane results in the following files:
 ![](images/ss_term_str_example.png)
+
 The filename `troll_19315479765589239` contains the string `19315479765589239` which is specified in the `str` node for the first question. So, text that appears in the lower pane seems to be read and analyzed, and if the expected string appears it somehow triggers the next question in the upper pane. 
 Questions of the type `cmd` seems to instead have a command to check whether or not the question is completed. The below question where a file is asked to be deleted contains the `cmd`:
 ```bash ln:false
@@ -114,6 +118,7 @@ Let's decompile the `.pyc` files!
 
 We see that `tp.py` is much larger than `bp.py`. It is due to a decompilation error as hinted in the command output. The file contains some debug information as well as human readable (to some degree) parsed byte-code for the method that failed to decompile. Apparently it was the `get_log` method. Looking at the parsed code it is still pretty easy to get an idea of what is happening. A logfile is opened, its content read and then the file is emptied by copying `/dev/null` to the logfile.
 ![](images/ss_vim_bp_tp.png)
+
 ## Bottom pane program
 Let's start with the smallest file, `bp.py` for the bottom pane. It is just a bit over 60 lines after some clean up.
 ```python ln:true title:bp.py
@@ -453,6 +458,7 @@ init@fa05c734836f:/tmp$ /home/init/top_pane
 ```
 Now back to the first window with `Ctrl-b n` and enter "yes" in the bottom pane. List the files in `/tmp`:
 ![](images/ss_term_tmp.png)
+
 YES! We executed code as `root`!
 
 In order to turn the above findings into a `root` shell, we will create a small binary `/tmp/rs` whose only purpose is change effective user to `root` and then execute bash. We use the `cmds_on_begin` hack to make it `setuid root`. Then we can just launch the executable and have a `root` shell.
@@ -468,13 +474,17 @@ echo 'main() { setuid(0); setgid(0); system("bash"); }' > rs.c
 make rs
 ```
 ![](images/ss_term_make_rs.png)
+
 The compiler cries a bit because we didn't `return`something from the `main` function, and use functions implicitly without declaring them (something normally done with `#include` statements, for example `#include <unistd.h>`), but it happily builds the executable anyway.
 
 Let's execute the `/home/init/top_pane` binary, go back to the first `window` and enter "yes" followed by executing our newly created `/tmp/rs` binary:
 ![](images/ss_term_rs_id.png)
+
 YES! A `root` shell. Now we can examine that `runtoanswer` file...
+
 ## The mysterious `runtoanswer`
 ![](images/ss_term_root.png)
+
 We find an executable of around half a megabyte, and a small `.yaml` file:
 ```yaml title:runtoanswer.yaml
 # This is the config file for runtoanswer, where you can set up your challenge!
@@ -590,6 +600,7 @@ Later in the file, we find the code most likely responsible for filtering out th
 
 Can we perhaps fool the system by first manually typing the first five `#` characters of the outputted string and paste the rest? It turns out it is possible! What happens if we continue with pressing enter?
 ![](images/ss_achievement_unlocked.png)
+
 Wohoo!! Challenge completed.
 > New Achievement Unlocked: Linux 101!
 
