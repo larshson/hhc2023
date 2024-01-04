@@ -425,7 +425,7 @@ Looking at the code, we learn the following
 * When finished with all the questions, it executes a program on line 167 using the data stored in the environment variable `RESOURCE_ID` and prints the program output together with the `finale` variable from the `questions_answers.json`. It then enters an endless loop running `sleep`.
 
 The program that is executed at line 167 is located in `/root/`. A static hex string is piped into the program, and only its last line of output is regarded:
-`echo 40e31ecb9c4b | RESOURCE_ID={henv} /root/runtoanswer | tail -1
+`echo 40e31ecb9c4b | RESOURCE_ID={henv} /root/runtoanswer | tail -1`
 
 So, what is the `runtoanswer` program? How does it work? Neither of the users `elf` or `init` have permissions to reach the file. In order to access it, we need to become `root`.
 ## The search for `root`
