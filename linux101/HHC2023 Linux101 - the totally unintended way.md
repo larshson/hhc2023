@@ -12,6 +12,7 @@ So, what is `tmuxp`? I am a big fan of the `tmux` program, especially the abilit
 Checking out the [GitHub page](https://github.com/tmux-python/tmuxp) for `tmuxp` it is revealed that `tmuxp` is essentially a session manager for `tmux`, which allows users to save and load `tmux` `sessions` through simple configuration files.
 
 Within a `tmux` session you can issue commands with key shortcuts, using something called the `prefix key`. In the default configuration, the `prefix key` is `Ctrl-b`, i.e. the `control` button pressed at the same time as `b`. Followed by other keys, commands are issued. For example `Ctrl-b %` corresponds to splitting a `window` vertically. Let's try it!
+
 ![](images/ss_reconnect.png)
 
 Disconnected! Quickly after issuing the command, we got thrown out from the challenge. But, at least the command worked and we understand that we are indeed running `tmux` with the default `prefix key` configured.
@@ -22,6 +23,7 @@ This time it worked, and we did not get disconnected! Plus, we are not the user 
 ![](images/ss_term_init_files.png)
 
 Two large (>5Mb) files, the previously missing `mysession.yaml` and a `questions_answers.json` file. Let's investigate `mysession.yaml` by launching it in vim:
+
 ![](images/ss_vim_mysession.png)
 
 So `tmuxp` configures a `tmux` `session` with a single `window`, divided into two horizontally split `panes`, each running the `top_pane` and the `bottom_pane` binaries, respectively. This shows us the challenge's structure and straightly points us onto what we should focus next.
@@ -33,6 +35,7 @@ For example, the first question:
 >Perform a directory listing of your home directory to find a troll \[...\]
 
 Running `ls` in the bottom pane results in the following files:
+
 ![](images/ss_term_str_example.png)
 
 The filename `troll_19315479765589239` contains the string `19315479765589239` which is specified in the `str` node for the first question. So, text that appears in the lower pane seems to be read and analyzed, and if the expected string appears it somehow triggers the next question in the upper pane. 
@@ -41,22 +44,27 @@ Questions of the type `cmd` seems to instead have a command to check whether or 
 [[ -f /home/elf/troll_19315479765589239 ]] || echo troll_removed
 ```
 as well as a `stdout` node with the value `troll_removed`. So, the command checks if a file exists, and if the check fails (i.e. the file is removed), it outputs `troll_removed` which somehow triggers the next question.
+
 ![](images/ss_vim_questions_answers_cmd.png)
 
 In order to understand how all this works in detail, for example the triggering of questions between the panes, we need to investigate the binaries running in the panes, `top_pane` and `bottom_pane`.
 ## The binaries
 Using the `file` command to output information of what type of file we are dealing with, we are only given the information that it is a 64-bit ELF executable. That doesn't take us much further.
+
 ![](images/ss_term_file_top_pane.png)
 
 We need more information! Is it something we can reverse easily? Instead looking at strings embedded in the binary with the `strings` command and piping it through `less`, we only have to scroll down a few pages to find this:
+
 ![](images/ss_term_strings_top_pane.png)
 
 They are `PyInstaller` packages! `PyInstaller` creates executable files from Python scripts, so that they can be run on systems without Python installed. That's why they are huge in size, as they embed a complete Python interpreter.
 
 We want to "extract" the packages so that we get to the Python code instead. Good thing that tools exists that can do just this. For `PyInstaller` packages we can use `PyInstxtractor` ([GitHub page](https://github.com/extremecoders-re/pyinstxtractor)). It is contained in a single python-file of less than 500 lines. Just copy and paste the contents of [the file](https://raw.githubusercontent.com/extremecoders-re/pyinstxtractor/2457a39b67048a89e19e6bdf7bbcd660ba0eafe3/pyinstxtractor.py) and paste it into a file on the web terminal and use it from there.
+
 ![](images/ss_term_cat_pyinstxtractor.png)
 
 Running it on the binaries indeed succeeds with extracting them to separate folders.
+
 ![](images/ss_term_pyinstxtractor.png)
 
 Looking at the command output, it suggests a few possible entry points for the programs. Remembering the names of the binaries, odds are that the files we should be interested in are the `tp.pyc` and `bp.pyc`. But, what are `.pyc` files? They are not python files - opening them in an editor shows just binary "garbage" with single recognizable words here. Let's ask `ChatGPT 4` what we can do with them:
@@ -80,14 +88,17 @@ Looking at the command output, it suggests a few possible entry points for the p
 >Remember, always respect copyright and intellectual property rights when dealing with compiled code. Decompilation should only be done with proper authorization and for legitimate purposes.
 
 So the `.pyc` files are compiled Python code. We are given examples of tools that can be used to decompile them in to readable Python source code. Unfortunately, the container executing the challenge does not have internet connection, so we cannot install packages unless pasting them into the terminal like we did with the `PyInstxtractor` code. It feels a bit too cumbersome to continue the investigations in the web terminal, so let's exfiltrate them instead and deal with them locally. They are, after all, pretty small.
+
 ![](images/ss_term_pyc_files.png)
 
 In order to copy-and-paste binary data from a terminal, a tool like `base64` can be used. If we also compress the file first, the amount to copy will be even smaller. Even with a relatively small terminal window, `tp.pyc` fits within one window. The process is repeated with `bp.pyc`.
+
 ![](images/ss_term_base64_pyc.png)
 
 Getting the files onto your system is just a process of copying the data above, and reversing the base64 and compression process:
 `cat | base64 -d | unxz > tp.pyc` 
 Then paste the data, press `Enter` followed by `Ctrl-d` to indicate end of input for `cat`. Repeating the process for `bp.pyc`, we end up with the wanted files on our target system. 
+
 ![](images/ss_term_pyc_files_local.png)
 
 In order not to bloat your system with temporary tools, and to also direct with fine detail what version of Python you want running, `docker` can be used to create a container with the wanted Python version. My system is running Python 3.6.9, whereas the `PyInstaller` packages were created with Python 3.8.
@@ -111,12 +122,15 @@ In order to launch it with the current directory mapped into a folder in the con
 `docker run -v $(pwd):/linux101 --rm -it linux101tools bash`
 
 We end up in a container with the current folder "mounted" into the folder `/linux101`.
+
 ![](images/ss_term_pyc_files_docker.png)
 
 Let's decompile the `.pyc` files! 
+
 ![](images/ss_term_uncompyle6.png)
 
 We see that `tp.py` is much larger than `bp.py`. It is due to a decompilation error as hinted in the command output. The file contains some debug information as well as human readable (to some degree) parsed byte-code for the method that failed to decompile. Apparently it was the `get_log` method. Looking at the parsed code it is still pretty easy to get an idea of what is happening. A logfile is opened, its content read and then the file is emptied by copying `/dev/null` to the logfile.
+
 ![](images/ss_vim_bp_tp.png)
 
 ## Bottom pane program
@@ -457,6 +471,7 @@ init@fa05c734836f:/tmp$ vim questions_answers.json  # modify cmds_on_begin as ab
 init@fa05c734836f:/tmp$ /home/init/top_pane 
 ```
 Now back to the first window with `Ctrl-b n` and enter "yes" in the bottom pane. List the files in `/tmp`:
+
 ![](images/ss_term_tmp.png)
 
 YES! We executed code as `root`!
@@ -473,16 +488,19 @@ The container even comes with some development tools, like the `gcc` compiler. W
 echo 'main() { setuid(0); setgid(0); system("bash"); }' > rs.c
 make rs
 ```
+
 ![](images/ss_term_make_rs.png)
 
 The compiler cries a bit because we didn't `return`something from the `main` function, and use functions implicitly without declaring them (something normally done with `#include` statements, for example `#include <unistd.h>`), but it happily builds the executable anyway.
 
 Let's execute the `/home/init/top_pane` binary, go back to the first `window` and enter "yes" followed by executing our newly created `/tmp/rs` binary:
+
 ![](images/ss_term_rs_id.png)
 
 YES! A `root` shell. Now we can examine that `runtoanswer` file...
 
 ## The mysterious `runtoanswer`
+
 ![](images/ss_term_root.png)
 
 We find an executable of around half a megabyte, and a small `.yaml` file:
@@ -514,17 +532,21 @@ Since the binary is around half a megabyte, it is a bit more cumbersome to trans
 
 Zoom level 25% and a row width of 1150 characters made the whole output fit in one page:
 `cat runtoanswer | xz -9 | base64 -w 1150`
+
 ![](images/ss_term_base64_runtoanswer.png)
 
 A simple `strings` check (start from the end rather from the beginning) hints that this is a `rust` binary built by the developer `ron` (\*waving\* hey [Ron Bowes](https://www.skullsecurity.org/about)!). 
+
 ![](images/ss_term_strings_runtoanswer.png)
 
 We see what is probably an error message about a non-defined `RESOURCE_ID`, the environment variable set before running `runtoanswer` from `tp.py`. We also see that it includes a `HMAC`library ([this one](https://crates.io/crates/hmac/0.8.1/)) so it probably does some calculations using the `key`variable from the `runtoanswer.yaml` file and using it to somehow indicate to the HHC framework that the challenge is solved. How and where is it sent, though?
 
 Loading the binary up in `ghidra`, a popular and free reverse engineering tool ([link](https://ghidra-sre.org/)), we see that just a few standard external functions are linked, none related to for example networking. It seems to mostly be working with `stdin`and `stdout` via the `read`and `write` functions, and getting environment variables with `getenv`. Some of the external symbol references are shown below:
+
 ![](images/ss_ghidra_exported.png)
 
 Reversing `rust` binaries is not an easy task however (and I will be the first to admit that it is _not_ my expertise) - after identifying what I believed to be some sort of `main` function, the decompiled code was 4519 lines long, had around 390 (according to `ghidra`) local variables and code looking like this:
+
 ![](images/ss_ghidra_decompiled.png)
 
 This made me NOPE out of thinking I could get understanding using static code analysis, at least given the time I was willing to spend. 
@@ -589,16 +611,20 @@ What happens if we write such a string to the terminal? Let's copy the string be
 #####hhc:{"hash": "blablabla", "resourceId": "blablabla"}#####
 ```
 then paste it into an `echo`command in the terminal:
+
 ![](images/ss_term_pastefail.png)
 
 Nothing appears in the terminal. Did I not paste? I'm sure I did. \*paste again\* - nope, nothing happens. WHAT SOURCERY IS THIS?
 It must be the web terminal doing something when writing this specific string. Let's check `wetty` by launching a developer console in the browser. Pretty quick, the file `conduit.js` is spotted, setting the variable `__WETTY_OUTPUT_FILTER__` to something that looks like a regex (line 1) describing just the string we tried to paste.
+
 ![](images/ss_chrome_conduit_1.png)
 
 Later in the file, we find the code most likely responsible for filtering out these strings and replacing them with an empty string (line 76-84). 
+
 ![](images/ss_chrome_conduit_2.png)
 
 Can we perhaps fool the system by first manually typing the first five `#` characters of the outputted string and paste the rest? It turns out it is possible! What happens if we continue with pressing enter?
+
 ![](images/ss_achievement_unlocked.png)
 
 Wohoo!! Challenge completed.
