@@ -630,7 +630,7 @@ Can we perhaps fool the system by first manually typing the first five `#` chara
 Wohoo!! Challenge completed.
 > New Achievement Unlocked: Linux 101!
 
-But, how was the achievement of the completed challenge communicated to the HHC backend? I'm not entirely sure, but my guess would be that the server side of the `wetty` terminal monitors the `websocket` for such `#####hhc:[...]#####` strings, sends them to a service that verifies the `HMAC` and then tells your browser. After all, the `runtoanswer.yaml` said the following about the `key` variable, so it feels safe to assume it lives in more places.
+But, how was the achievement of the completed challenge communicated to the HHC backend? I'm not entirely sure, but my guess would be that the server side of the `wetty` terminal monitors the `websocket` for such `#####hhc:[...]#####` strings, sends them to a service that verifies the `HMAC` and then tells your browser. After all, the `runtoanswer.yaml` said the following about the `key` variable, so it feels safe to assume it lives in more places. \[Correction: it is the browser that is responsible for sending it to the servers for verification, not the HHC backend\]
 > This is the completionSecret from the Content sheet - don't tell the user this!
 
 Phew. It was indeed fun! Thank you SANS for the challenge!
