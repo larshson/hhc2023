@@ -114,11 +114,13 @@ RUN pip install uncompyle6
 ```
 
 Save the file as `Dockerfile` and build the image, tagging it as `linux101tools`:
+
 `docker build . -t linux101tools`
 
 It will start downloading the required docker images followed by installation of the specified packages, lastly we have our tagged image.
 
 In order to launch it with the current directory mapped into a folder in the container, we run the image with the `-v` option for "mounting a volume". The python image will default to running the `python` executable though, so we specify that we want it to run bash instead: 
+
 `docker run -v $(pwd):/linux101 --rm -it linux101tools bash`
 
 We end up in a container with the current folder "mounted" into the folder `/linux101`.
@@ -425,6 +427,7 @@ Looking at the code, we learn the following
 * When finished with all the questions, it executes a program on line 167 using the data stored in the environment variable `RESOURCE_ID` and prints the program output together with the `finale` variable from the `questions_answers.json`. It then enters an endless loop running `sleep`.
 
 The program that is executed at line 167 is located in `/root/`. A static hex string is piped into the program, and only its last line of output is regarded:
+
 `echo 40e31ecb9c4b | RESOURCE_ID={henv} /root/runtoanswer | tail -1`
 
 So, what is the `runtoanswer` program? How does it work? Neither of the users `elf` or `init` have permissions to reach the file. In order to access it, we need to become `root`.
@@ -524,13 +527,15 @@ prompt: "What is the answer?\n> "
 ```
 
 We recognize the hex string on line 8 from line 167 in `tp.py`:
-`echo 40e31ecb9c4b | RESOURCE_ID={henv} /root/runtoanswer | tail -1
+
+`echo 40e31ecb9c4b | RESOURCE_ID={henv} /root/runtoanswer | tail -1`
 
 The hex string `40e31ecb9c4b` is what tells `runtoanswer` that the answer is correct. But how is that communicated to the system backend to keep track of your solved challenges? Let's exfiltrate the binary and take a closer look at it.
 
 Since the binary is around half a megabyte, it is a bit more cumbersome to transfer than the `.pyc` files. It would probably be possible to just print it in the terminal and afterwards look at the data transferred in the `websocket` (the web terminal is accomplished using [wetty](https://github.com/butlerx/wetty) which uses `websockets` for communication). One would have to deal with filtering out ANSI escape codes from the data though. It is probably faster to zoom out the web browser window as much as possible and do it the same way as with the `.pyc` files.
 
 Zoom level 25% and a row width of 1150 characters made the whole output fit in one page:
+
 `cat runtoanswer | xz -9 | base64 -w 1150`
 
 ![](images/ss_term_base64_runtoanswer.png)
@@ -570,6 +575,7 @@ Your answer is correct!
 ```
 
 Is that it? Just a string to the terminal? Confirm by letting `strace` run the binary, which traces the system calls the binary uses and prints them to the screen.
+
 `echo 40e31ecb9c4b | RESOURCE_ID=79058a94-e5c5-4e9a-b2c7-444ab86109fa strace ./runtoanswer`
 
 In the beginning we see typical calls for loading shared libraries, lot of memory allocations and memory mappings. The `/etc/runtoanswer.yaml` file is opened and read, 16 bytes of random data is retrieved, the answer is read from `stdin` and the `#####hhc[...]` string is written to `stdout`. I thought maybe the containers communicated with the backend on the container's local network but that does not seem to be the case. Just a specially formatted string written to the terminal itself.
